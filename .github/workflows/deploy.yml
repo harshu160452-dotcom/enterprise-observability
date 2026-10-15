@@ -1,0 +1,79 @@
+name: Build and Deploy to EKS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ap-south-1
+  ECR_REGISTRY: 884686184248.dkr.ecr.ap-south-1.amazonaws.com
+  EKS_CLUSTER: enterprise-eks
+
+jobs:
+  build-and-push:
+    name: Build and Push Images
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::884686184248:role/GitHubActions-EKS-Role
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and Push User Service
+        run: |
+          docker build -t $ECR_REGISTRY/user-service:${GITHUB_SHA} ./user-service
+          docker push $ECR_REGISTRY/user-service:${GITHUB_SHA}
+
+      - name: Build and Push Order Service
+        run: |
+          docker build -t $ECR_REGISTRY/order-service:${GITHUB_SHA} ./order-service
+          docker push $ECR_REGISTRY/order-service:${GITHUB_SHA}
+
+      - name: Build and Push Payment Service
+        run: |
+          docker build -t $ECR_REGISTRY/payment-service:${GITHUB_SHA} ./payment-service
+          docker push $ECR_REGISTRY/payment-service:${GITHUB_SHA}
+
+  deploy:
+    name: Deploy to EKS
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::884686184248:role/GitHubActions-EKS-Role
+          aws-region: ap-south-1
+
+      - name: Configure kubectl
+        run: aws eks update-kubeconfig --name enterprise-eks --region ap-south-1
+
+      - name: Deploy Microservices
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          kubectl set image deployment/user-service user-service=884686184248.dkr.ecr.ap-south-1.amazonaws.com/user-service:$IMAGE_TAG
+          kubectl set image deployment/order-service order-service=884686184248.dkr.ecr.ap-south-1.amazonaws.com/order-service:$IMAGE_TAG
+          kubectl set image deployment/payment-service payment-service=884686184248.dkr.ecr.ap-south-1.amazonaws.com/payment-service:$IMAGE_TAG
+          kubectl rollout status deployment/user-service --timeout=180s
+          kubectl rollout status deployment/order-service --timeout=180s
+          kubectl rollout status deployment/payment-service --timeout=180s
