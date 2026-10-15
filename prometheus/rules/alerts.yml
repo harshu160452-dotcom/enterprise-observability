@@ -1,0 +1,21 @@
+groups:
+  - name: service-alerts
+    rules:
+
+      - alert: ServiceDown
+        expr: up == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service is down"
+          description: "A monitored service is not responding."
+
+      - alert: HighCPU
+        expr: sum by (container_label_com_docker_compose_service) (rate(container_cpu_usage_seconds_total{job="cadvisor",container_label_com_docker_compose_service!=""}[5m])) > 0.8
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High container CPU usage"
+          description: "Container CPU usage is above threshold."
