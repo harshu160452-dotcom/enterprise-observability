@@ -4,3 +4,8 @@
 *.tfvars
 .env
 __pycache__/
+tempo/data/
+loki/data/
+terraform/tfplan
+terraform/*.tfstate
+terraform/*.tfstate.*
